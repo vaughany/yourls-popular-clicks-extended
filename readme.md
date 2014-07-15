@@ -2,12 +2,12 @@
 
 Plugin for [YOURLS](http://yourls.org) `1.7`. 
 
-    Plugin Name:    Best Links
-    Plugin URI:     [github.com/vaughany/yourls-best-links](http://github.com/vaughany/yourls-best-links)
-    Description:    A report showing the most popular links for given time periods.
-    Version:        1.0
-    Author:         Paul Vaughan
-    Author URI:     [github.com/vaughany](http://github.com/vaughany/)
+* Plugin Name:    Best Links
+* Plugin URI:     [github.com/vaughany/yourls-best-links](http://github.com/vaughany/yourls-best-links)
+* Description:    A report showing the most popular links for given time periods.
+* Version:        1.0
+* Author:         Paul Vaughan
+* Author URI:     [github.com/vaughany](http://github.com/vaughany/)
 
 
 ## Description
