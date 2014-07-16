@@ -38,9 +38,9 @@ If you know what you're doing you can add and amend this plugin, but some change
 
 I'm always keen to add new features, improve performance and squash bugs, so if you do any of these things, let me know. [Fork the project](https://github.com/vaughany/yourls-popular-clicks-extended/), make your changes and send me a pull request.  If you find a bug but aren't a coder yourself, [open an issue](https://github.com/vaughany/yourls-popular-clicks-extended/issues) and give me as much detail as possible about the problem:
 
- * What you did
- * What you expected to happen
- * What actually happened
- * Steps to reproduce
+* What you did
+* What you expected to happen
+* What actually happened
+* Steps to reproduce
 
- I hope you find this plugin useful.
+I hope you find this plugin useful.
