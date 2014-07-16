@@ -1,35 +1,46 @@
-# Best Links YOURLS plugin
+# Popular Clicks Extended - a YOURLS plugin
 
-Plugin for [YOURLS](http://yourls.org) `1.7`. 
+Plugin for [YOURLS](http://yourls.org) 1.7.x.
 
-* Plugin Name:    Best Links
-* Plugin URI:     [github.com/vaughany/yourls-best-links](http://github.com/vaughany/yourls-best-links)
-* Description:    A report showing the most popular links for given time periods.
-* Version:        1.0
-* Author:         Paul Vaughan
-* Author URI:     [github.com/vaughany](http://github.com/vaughany/)
+* Plugin URI:       [github.com/vaughany/yourls-popular-links-extended](http://github.com/vaughany/yourls-popular-links-extended)
+* Description:      A YOURLS plugin showing the most popular clicks for given time periods.
+* Version:          0.1
+* Release date:     2014-07-16
+* Author:           Paul Vaughan
+* Author URI:       [github.com/vaughany](http://github.com/vaughany/)
 
 
 ## Description
 
-This plugin produces a report of which short links get clicked the most. It is inspired by the [popular clicks](https://github.com/miconda/yourls/tree/master/plugins/popular-clicks) plugin (and others) but modified to suit how I want to see the data displayed.
-
-The plugin which inspired this works in periods of days to the second from when you load the page, however you can't see what happened yesterday (*e.g.* midnight to midnight), only the preceeding 24 hour period.  This plugin solves that problem.
+This plugin shows you which short links get clicked the most.  It can do 'last n minutes' type reports (e.g. last 5 minutes, last hour, last 24 hours etc) as well as 'blocks of time' reports (e.g. today, yesterday, this week, this month etc).  It is inspired by the [popular clicks](https://github.com/miconda/yourls/) plugin (and others) and improves on their work substantially.
 
 
 ## Installation
 
-1. In `/user/plugins`, create a new folder named `best-links`.
+1. In `/user/plugins`, create a new folder named `popular-links-extended`.
 2. Drop these files in that directory.
-3. Go to the Plugins administration page (*eg* `http://sho.rt/admin/plugins.php`) and activate the plugin.
-4. Have fun!
+3. Go to the Manage Plugins page (e.g. `http://sho.rt/admin/plugins.php`) and activate the plugin.
+4. Under the Manage Plugins link should be a new link called `Popular Clicks Extended`.
+5. Have fun!
 
 
 ## License
 
-*Here*: your license type. Feel free to use YOURLS' license, aka *"Do whatever the hell you want with it"*.
+Uses YOURLS' license, aka *"Do whatever the hell you want with it"*.  I borrowed code from others which had no licence so I can't claim this whole plugin as my own work, but the lion's share of it is.
 
 
-## One more thing
+## Configuration
 
-*Here*: any other content, as needed. An important information should be contact information for bug reports or user questions, if you decide not to use Github issues in your plugin repository.
+If you know what you're doing you can add and amend this plugin, but some changes will be easier than others. If you make substantial improvements, [let me know](https://github.com/vaughany/yourls-popular-clicks-extended/issues).
+
+
+## Bugs and Features
+
+I'm always keen to add new features, improve performance and squash bugs, so if you do any of these things, let me know. [Fork the project](https://github.com/vaughany/yourls-popular-clicks-extended/), make your changes and send me a pull request.  If you find a bug but aren't a coder yourself, [open an issue](https://github.com/vaughany/yourls-popular-clicks-extended/issues) and give me as much detail as possible about the problem:
+
+ * What you did
+ * What you expected to happen
+ * What actually happened
+ * Steps to reproduce
+
+ I hope you find this plugin useful.
