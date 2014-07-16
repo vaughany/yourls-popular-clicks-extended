@@ -15,6 +15,7 @@ Author URI:     http://github.com/vaughany/
  *      Use global $now instead of time() so that the whole report is consistent.
  *      Use different pages for different types of reports.
  *      Report is in English: use the language functions to provide for potential translations.
+ *      Most recent n lines from the log.
  */
 
 /**
@@ -28,6 +29,8 @@ if ( !defined ('YOURLS_ABSPATH') ) { die(); }
 
 // Change to true to get extra debugging info on-screen. Must be true or false, cannot be undefined.
 define ( "PCE_DEBUG", false );
+// Define the separator between bits of information.
+define ( "PCE_SEP", ' | ' );
 
 yourls_add_action( 'plugins_loaded', 'popularclicksextended_add_page' );
 
@@ -97,8 +100,6 @@ function popularclicksextended_display_page() {
      * $type:   string:     One of: hour, day, week, month, year; so $period can be processed correctly.
      * $rows:   integer:    The number of rows to pull from the database (maximum), defaults to 10.
      * $desc:   string:     Describes the time period for the report.
-     * 
-     * TODO: allow greater bounds, e.g. last hour, last week, last month, last year.
      */
     function show_specific_period( $period, $type, $rows, $desc ) {
 
@@ -167,13 +168,11 @@ function popularclicksextended_display_page() {
      * Often-used function to parse and format the results.
      */
     function render_results( $results ) {
-        $sep = ' | ';
-
         $out = '<ol>';
         foreach ( $results as $result ) {
             $out .= '<li>';
-            $out .= $result->clicks . $sep;
-            $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . $sep;
+            $out .= $result->clicks . PCE_SEP;
+            $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . PCE_SEP;
             $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->longurl . '</a>';
             $out .= '</li>';
         }
@@ -181,6 +180,54 @@ function popularclicksextended_display_page() {
 
         return $out;
     }
+
+    /**
+     * show_log() shows the n most recent lines from the log table.
+     *
+     * $rows:   integer:    The number of rows to pull from the database (maximum), defaults to 10.
+     */
+    function show_log( $rows ) {
+
+        global $ydb;
+
+        // Check for an appropriate integer, set a default if not appropriate.
+        if ( !is_int($rows) || $rows == 0 || $rows == null || $rows == '' ) {
+            $rows = 10;
+        }
+
+        $sql = "SELECT click_time, ip_address, country_code, referrer, a.shorturl AS shorturl, b.url AS longurl 
+            FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b 
+            WHERE a.shorturl = b.keyword 
+            ORDER BY click_time DESC
+            LIMIT " . $rows . ";";
+
+        if ( PCE_DEBUG ) {
+            echo '<p style="color: #f00;">(' . $sql . ")</p>\n";
+        }
+
+        if ( $results = $ydb->get_results( $sql ) ) {
+            $out = '<ol>';
+            foreach ( $results as $result ) {
+                $out .= '<li>';
+                $out .= $result->click_time . PCE_SEP;
+                $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a> / ';
+                $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->longurl . '</a>' . PCE_SEP;
+                $out .= $result->ip_address . PCE_SEP;
+                $out .= $result->country_code . PCE_SEP;
+                $out .= $result->referrer;
+                $out .= '</li>';
+            }
+            $out .= "</ol>\n";
+        } else {
+            $out = '<p>No logs to display.</p>' . "\n";
+        }
+
+        echo $out;
+
+    }
+
+    echo "<hr>\n";
+    echo '<h2>Popular clicks for &quot;<em>period</em>&quot;</h2>'."\n";
 
     /**
      * show_specific_period() shows a specific hour, day, week, month or year. You can add more if you know what you're doing.
@@ -203,6 +250,7 @@ function popularclicksextended_display_page() {
     //show_specific_period( date( 'Y', strtotime( '- 1 year' ) ), 'year', null, 'last year (' . date('Y', strtotime( '- 1 year' ) ) . ')' );
 
     echo "<hr>\n";
+    echo '<h2>Popular clicks for the last &quot;<em>period</em>&quot;</h2>'."\n";
 
     /**
      * show_last_period() shows all clicks from n seconds ago until now. Note that 24 hours here is not the same as 'yesterday', above.
@@ -225,6 +273,12 @@ function popularclicksextended_display_page() {
     // ...and the catch-all:
     //show_last_period( time(),                   null, 'billion years');
 
+    echo "<hr>\n";
+    echo '<h2>Recently used short links</h2>'."\n";
+
+    show_log( 10 );
+
+    echo "<hr>\n";
 
     if ( PCE_DEBUG ) {
         echo '<p style="color: #f00;">';
