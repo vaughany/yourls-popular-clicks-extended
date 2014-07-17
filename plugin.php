@@ -15,7 +15,8 @@ Author URI:     http://github.com/vaughany/
  *      Use global $now instead of time() so that the whole report is consistent.
  *      Use different pages for different types of reports.
  *      Report is in English: use the language functions to provide for potential translations.
- *      Most recent n lines from the log.
+ *      Config options to toggle the options: do you really need recent 5 mins or 2 years ago?
+ *      Issue/idea on YOURLS repo: https://github.com/yourls/yourls/issues/1732
  */
 
 /**
@@ -31,6 +32,11 @@ if ( !defined ('YOURLS_ABSPATH') ) { die(); }
 define ( "PCE_DEBUG", false );
 // Define the separator between bits of information.
 define ( "PCE_SEP", ' | ' );
+// Some version details, same as at the top of this file, for use in the page footer.
+define ( "PCE_REL_VER",  '0.1' );
+define ( "PCE_REL_DATE", '2014-07-16' );
+// Repository URL.
+define ( "PCE_REPO", 'https://github.com/vaughany/yourls-popular-clicks-extended' );
 
 yourls_add_action( 'plugins_loaded', 'popularclicksextended_add_page' );
 
@@ -40,9 +46,9 @@ function popularclicksextended_add_page() {
 
 function popularclicksextended_display_page() {
 
-    echo '<h2>Popular Clicks Extended</h2>'."\n";
+    echo '<h2>Popular Clicks Extended</h2>' . "\n";
     echo '<p>This report shows the most popular clicks for the selected time periods as of ' . date( 'jS F Y, g:ia', time() ) . '.</p>' . "\n";
-    echo '<p>Legend: <em>Position. Clicks | Short URL | Long URL</em></p>'."\n";
+    echo '<p>Legend: <em>Position. Clicks | Short URL | Long URL</em></p>' . "\n";
 
     /**
      * show_last_period(): queries the database for the number of clicks per link since n seconds ago,
@@ -122,7 +128,7 @@ function popularclicksextended_display_page() {
         } else if ( $type == 'week' ) {
             // Create the bounds for a single week.
             $from   = $period . ' 00:00:00';
-            $to     = date( 'Y-m-d', strtotime( $period . ' + 6 days' ) ) .' 23:59:59';
+            $to     = date( 'Y-m-d', strtotime( $period . ' + 6 days' ) ) . ' 23:59:59';
         } else if ( $type == 'month' ) {
             // Create the bounds for a single month.
             $from   = $period . '-01 00:00:00';
@@ -227,7 +233,7 @@ function popularclicksextended_display_page() {
     }
 
     echo "<hr>\n";
-    echo '<h2>Popular clicks for &quot;<em>period</em>&quot;</h2>'."\n";
+    echo '<h2>Popular clicks for &quot;<em>period</em>&quot;</h2>' . "\n";
 
     /**
      * show_specific_period() shows a specific hour, day, week, month or year. You can add more if you know what you're doing.
@@ -250,7 +256,7 @@ function popularclicksextended_display_page() {
     //show_specific_period( date( 'Y', strtotime( '- 1 year' ) ), 'year', null, 'last year (' . date('Y', strtotime( '- 1 year' ) ) . ')' );
 
     echo "<hr>\n";
-    echo '<h2>Popular clicks for the last &quot;<em>period</em>&quot;</h2>'."\n";
+    echo '<h2>Popular clicks for the last &quot;<em>period</em>&quot;</h2>' . "\n";
 
     /**
      * show_last_period() shows all clicks from n seconds ago until now. Note that 24 hours here is not the same as 'yesterday', above.
@@ -274,7 +280,7 @@ function popularclicksextended_display_page() {
     //show_last_period( time(),                   null, 'billion years');
 
     echo "<hr>\n";
-    echo '<h2>Recently used short links</h2>'."\n";
+    echo '<h2>Recently used short links</h2>' . "\n";
 
     show_log( 10 );
 
@@ -290,5 +296,7 @@ function popularclicksextended_display_page() {
     }
 
     // Nice footer.
-    echo '<p>This plugin by <a href="https://github.com/vaughany/">Paul Vaughan</a>, heavily inspired by <a href="https://github.com/miconda/yourls">Popular Clicks</a>, is <a href="#">available (to fork and improve) on GitHub</a>.</p>';
+    echo '<p>This plugin by <a href="https://github.com/vaughany/">Paul Vaughan</a>, version ' . PCE_REL_VER . ' (' . PCE_REL_DATE . 
+        '), heavily inspired by <a href="https://github.com/miconda/yourls">Popular Clicks</a>, is <a href="' . PCE_REPO . 
+        '">available on GitHub</a> (<a href="' . PCE_REPO . '/issues">file a bug here</a>).</p>' . "\n";
 }

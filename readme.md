@@ -43,4 +43,10 @@ I'm always keen to add new features, improve performance and squash bugs, so if 
 * What actually happened
 * Steps to reproduce
 
+## History
+
+* 2014-07-16, v0.1:     First version I'd consider fit for release.
+
+## Finally...
+
 I hope you find this plugin useful.
