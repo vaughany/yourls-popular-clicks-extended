@@ -246,8 +246,8 @@ function vaughany_popularclicksextended_display_page() {
     vaughany_show_specific_period( date( 'Y-m-d', time() ), 'day', null, 'today (' . date( 'jS F Y', time() ) . ') (so far)' );
     vaughany_show_specific_period( date( 'Y-m-d', strtotime( '- 1 day' ) ), 'day', null, 'yesterday (' . date( 'jS F Y', strtotime( '- 1 day' ) ) . ')' );
     // Specific weeks:
-    vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'last monday' ) ), 'week', null, 'this week (beginning ' . date( 'jS F Y', strtotime( 'last monday' ) ) . ') (so far)' );
-    vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'last monday - 7 days' ) ), 'week', null, 'last week  (beginning ' . date( 'jS F Y', strtotime( 'last monday - 7 days' ) ) . ')' );
+    vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week' ) ), 'week', null, 'this week (beginning ' . date( 'jS F Y', strtotime( 'monday this week' ) ) . ') (so far)' );
+    vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week - 7 days' ) ), 'week', null, 'last week  (beginning ' . date( 'jS F Y', strtotime( 'monday this week - 7 days' ) ) . ')' );
     // Specific months:
     vaughany_show_specific_period( date( 'Y-m', time() ), 'month', null, 'this month (' . date( 'F Y', time() ) . ') (so far)' );
     vaughany_show_specific_period( date( 'Y-m', strtotime( '- 1 month' ) ), 'month', null, 'last month (' . date( 'F Y', strtotime( '- 1 month' ) ) . ')' );

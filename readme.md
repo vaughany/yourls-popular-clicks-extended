@@ -4,8 +4,8 @@ Plugin for [YOURLS](http://yourls.org) 1.7.x.
 
 * Plugin URI:       [github.com/vaughany/yourls-popular-links-extended](http://github.com/vaughany/yourls-popular-links-extended)
 * Description:      A YOURLS plugin showing the most popular clicks for given time periods.
-* Version:          0.1
-* Release date:     2014-07-16
+* Version:          0.1.1
+* Release date:     2015-01-19
 * Author:           Paul Vaughan
 * Author URI:       [github.com/vaughany](http://github.com/vaughany/)
 
@@ -45,6 +45,7 @@ I'm always keen to add new features, improve performance and squash bugs, so if 
 
 ## History
 
+* 2015-01-19, v0.1.1:   Minutely changed the wording to work out the current and previous weeks, fixing a minor bug.
 * 2014-07-16, v0.1:     First version I'd consider fit for release.
 
 ## Finally...
