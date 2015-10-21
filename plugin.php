@@ -174,8 +174,10 @@ function vaughany_popularclicksextended_display_page() {
      * Often-used function to parse and format the results.
      */
     function vaughany_render_results( $results ) {
+        $total = 0;
         $out = '<ol>';
         foreach ( $results as $result ) {
+            $total += $result->clicks;
             $out .= '<li>';
             $out .= $result->clicks . PCE_SEP;
             $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . PCE_SEP;
@@ -183,6 +185,7 @@ function vaughany_popularclicksextended_display_page() {
             $out .= '</li>';
         }
         $out .= "</ol>\n";
+        $out .= '<p>' . $total . " total clicks this period.</p>\n";
 
         return $out;
     }
