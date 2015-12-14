@@ -48,7 +48,7 @@ function vaughany_popularclicksextended_display_page() {
 
     echo '<h2>Popular Clicks Extended</h2>' . "\n";
     echo '<p>This report shows the most popular clicks for the selected time periods as of ' . date( 'jS F Y, g:ia', time() ) . '.</p>' . "\n";
-    echo '<p>Legend: <em>Position. Clicks | Short URL | Long URL</em></p>' . "\n";
+    echo '<p>Legend: <em>Position. Clicks' . PCE_SEP . 'Short URL' . PCE_SEP . 'Page</em></p>' . "\n";
 
     /**
      * vaughany_show_last_period(): queries the database for the number of clicks per link since n seconds ago,
