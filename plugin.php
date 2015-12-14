@@ -71,7 +71,7 @@ function vaughany_popularclicksextended_display_page() {
         // Take the seconds off the current time, then change the timestamp into a date.
         $since = date( 'Y-m-d H:i:s', ( time() - $period ) );
 
-        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl 
+        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title 
             FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b 
             WHERE a.shorturl = b.keyword 
                 AND click_time >= '" . $since . "'
@@ -143,7 +143,7 @@ function vaughany_popularclicksextended_display_page() {
             $to     = date( 'Y-m-d H:i:s', 2147483647 );
         }
 
-        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl 
+        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title 
             FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b 
             WHERE a.shorturl = b.keyword 
                 AND click_time >= '" . $from . "'
@@ -181,7 +181,7 @@ function vaughany_popularclicksextended_display_page() {
             $out .= '<li>';
             $out .= $result->clicks . PCE_SEP;
             $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . PCE_SEP;
-            $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->longurl . '</a>';
+            $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->title . '</a>';
             $out .= '</li>';
         }
         $out .= "</ol>\n";
@@ -204,7 +204,7 @@ function vaughany_popularclicksextended_display_page() {
             $rows = 10;
         }
 
-        $sql = "SELECT click_time, ip_address, country_code, referrer, a.shorturl AS shorturl, b.url AS longurl 
+        $sql = "SELECT click_time, ip_address, country_code, referrer, a.shorturl AS shorturl, b.url AS longurl, b.title as title 
             FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b 
             WHERE a.shorturl = b.keyword 
             ORDER BY click_time DESC
@@ -220,7 +220,7 @@ function vaughany_popularclicksextended_display_page() {
                 $out .= '<li>';
                 $out .= $result->click_time . PCE_SEP;
                 $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a> / ';
-                $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->longurl . '</a>' . PCE_SEP;
+                $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->title . '</a>' . PCE_SEP;
                 $out .= $result->ip_address . PCE_SEP;
                 $out .= $result->country_code . PCE_SEP;
                 $out .= $result->referrer;
