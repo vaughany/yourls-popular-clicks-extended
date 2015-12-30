@@ -4,8 +4,8 @@
 Plugin Name:    Popular Clicks Extended
 Plugin URI:     http://github.com/vaughany/yourls-popular-clicks-extended
 Description:    A YOURLS plugin showing the most popular clicks for given time periods.
-Version:        0.1
-Release date:   2014-07-16
+Version:        0.2
+Release date:   2015-12-30
 Author:         Paul Vaughan
 Author URI:     http://github.com/vaughany/
 */
@@ -37,8 +37,8 @@ define ( "PCE_REL_VER",  '0.1' );
 define ( "PCE_REL_DATE", '2014-07-16' );
 // Repository URL.
 define ( "PCE_REPO", 'https://github.com/vaughany/yourls-popular-clicks-extended' );
-// Get the YOURLS config GMT offset
-define ( "PCE_OFFSET", defined( 'YOURLS_HOURS_OFFSET' ) ? YOURLS_HOURS_OFFSET * 60 * 60 : 0 );
+// Get the GMT offset if it is set
+define( "PCE_OFFSET", defined( 'YOURLS_HOURS_OFFSET' ) ? YOURLS_HOURS_OFFSET * 60 * 60 : 0 );
 
 yourls_add_action( 'plugins_loaded', 'vaughany_popularclicksextended_add_page' );
 
@@ -49,8 +49,8 @@ function vaughany_popularclicksextended_add_page() {
 function vaughany_popularclicksextended_display_page() {
 
     echo '<h2>Popular Clicks Extended</h2>' . "\n";
-    echo '<p>This report shows the most popular clicks for the selected time periods as of ' . date( 'jS F Y, g:ia', time() + PCE_OFFSET ) . '.</p>' . "\n";
-    echo '<p>Legend: <em>Position. Clicks | Short URL | Page</em></p>' . "\n";
+    echo '<p>This report shows the most popular clicks for the selected time periods as of ' . date( 'jS F Y, g:ia', time() ) . '.</p>' . "\n";
+    echo '<p>Legend: <em>Position. Clicks' . PCE_SEP . 'Short URL' . PCE_SEP . 'Page</em></p>' . "\n";
 
     /**
      * vaughany_show_last_period(): queries the database for the number of clicks per link since n seconds ago,
@@ -130,11 +130,11 @@ function vaughany_popularclicksextended_display_page() {
         } else if ( $type == 'week' ) {
             // Create the bounds for a single week.
             $from   = $period . ' 00:00:00';
-            $to     = date( 'Y-m-d', strtotime( $period . ' + 6 days' ) ) . ' 23:59:59';
+            $to     = date( 'Y-m-d', strtotime( $period . ' + 6 days', time() + PCE_OFFSET ) ) . ' 23:59:59';
         } else if ( $type == 'month' ) {
             // Create the bounds for a single month.
             $from   = $period . '-01 00:00:00';
-            $to     = date( 'Y-m-d', strtotime( $period . '-' . date( 't', strtotime( $from ) ) ) ) . ' 23:59:59';
+            $to     = date( 'Y-m-d', strtotime( $period . '-' . date( 't', strtotime( $from, time() + PCE_OFFSET ) ), time() + PCE_OFFSET ) ) . ' 23:59:59';
         } else if ( $type == 'year' ) {
             // Create the bounds for a single year.
             $from   = $period . '-01-01 00:00:00';
@@ -145,7 +145,7 @@ function vaughany_popularclicksextended_display_page() {
             $to     = date( 'Y-m-d H:i:s', 2147483647 );
         }
 
-        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title AS title
+        $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title
             FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b
             WHERE a.shorturl = b.keyword
                 AND click_time >= '" . $from . "'
@@ -176,8 +176,10 @@ function vaughany_popularclicksextended_display_page() {
      * Often-used function to parse and format the results.
      */
     function vaughany_render_results( $results ) {
+        $total = 0;
         $out = '<ol>';
         foreach ( $results as $result ) {
+            $total += $result->clicks;
             $out .= '<li>';
             $out .= $result->clicks . PCE_SEP;
             $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . PCE_SEP;
@@ -185,6 +187,7 @@ function vaughany_popularclicksextended_display_page() {
             $out .= '</li>';
         }
         $out .= "</ol>\n";
+        $out .= '<p>' . $total . " total clicks this period.</p>\n";
 
         return $out;
     }
@@ -251,10 +254,10 @@ function vaughany_popularclicksextended_display_page() {
     vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week', time() + PCE_OFFSET ) ), 'week', null, 'this week (beginning ' . date( 'jS F Y', strtotime( 'monday this week', time() + PCE_OFFSET ) ) . ') (so far)' );
     vaughany_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week - 7 days', time() + PCE_OFFSET ) ), 'week', null, 'last week  (beginning ' . date( 'jS F Y', strtotime( 'monday this week - 7 days', time() + PCE_OFFSET ) ) . ')' );
     // Specific months:
-    vaughany_show_specific_period( date( 'Y-m', time() + PCE_OFFSET  ), 'month', null, 'this month (' . date( 'F Y', time() + PCE_OFFSET  ) . ') (so far)' );
+    vaughany_show_specific_period( date( 'Y-m', time() + PCE_OFFSET ), 'month', null, 'this month (' . date( 'F Y', time() + PCE_OFFSET ) . ') (so far)' );
     vaughany_show_specific_period( date( 'Y-m', strtotime( '- 1 month', time() + PCE_OFFSET ) ), 'month', null, 'last month (' . date( 'F Y', strtotime( '- 1 month', time() + PCE_OFFSET ) ) . ')' );
     // Specific years:
-    vaughany_show_specific_period( date( 'Y', time() + PCE_OFFSET  ), 'year', null, 'this year (' . date( 'Y', time() + PCE_OFFSET  ) . ') (so far)');
+    vaughany_show_specific_period( date( 'Y', time() + PCE_OFFSET ), 'year', null, 'this year (' . date( 'Y', time() + PCE_OFFSET ) . ') (so far)');
     vaughany_show_specific_period( date( 'Y', strtotime( '- 1 year', time() + PCE_OFFSET ) ), 'year', null, 'last year (' . date('Y', strtotime( '- 1 year', time() + PCE_OFFSET ) ) . ')' );
 
     echo "<hr>\n";
