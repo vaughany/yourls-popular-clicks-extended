@@ -2,422 +2,437 @@
 
 /*
 Plugin Name:    Popular Clicks Extended
-Plugin URI:     http://github.com/vaughany/yourls-popular-clicks-extended
+Plugin URI:     https://github.com/vaughany/yourls-popular-clicks-extended
 Description:    A YOURLS plugin showing the most popular clicks for given time periods.
-Version:        0.3
-Release date:   2018-05-10
+Version:        0.4
+Release date:   2026-10-11
+Requires:       YOURLS 1.10, PHP 8.1
 Author:         Paul Vaughan
-Author URI:     http://github.com/vaughany/
+Author URI:     https://github.com/vaughany/
 */
 
 /**
  * TODO:
- *      Use global $now instead of time() so that the whole report is consistent.
- *      Use different pages for different types of reports.
- *      Report is in English: use the language functions to provide for potential translations.
- *      Config options to toggle the options: do you really need recent 5 mins or 2 years ago?
+ *      Config options to toggle the reports: do you really need recent 5 mins or 4 years ago?
  *      Issue/idea on YOURLS repo: https://github.com/yourls/yourls/issues/1732
  */
 
 /**
- * https://github.com/YOURLS/YOURLS/wiki/Coding-Standards
- * https://github.com/YOURLS/YOURLS/wiki#for-developpers
- * https://github.com/YOURLS/YOURLS/wiki/Plugin-List#get-your-plugin-listed-here
-*/
+ * https://docs.yourls.org/development/plugins.html
+ * https://docs.yourls.org/development/form-security.html
+ * https://github.com/YOURLS/awesome#plugins
+ */
 
 // No direct call.
-if ( !defined ('YOURLS_ABSPATH') ) { die(); }
-
-// Change to true to get extra debugging info on-screen. Must be true or false, cannot be undefined.
-define ( "PCE_DEBUG", false );
-
-// Define the separator between bits of information.
-define ( "PCE_SEP", ' | ' );
+if ( !defined( 'YOURLS_ABSPATH' ) ) { die(); }
 
 // Some version details, same as at the top of this file, for use in the page footer.
-define ( "PCE_REL_VER",  '0.3' );
-define ( "PCE_REL_DATE", '2018-05-10' );
+const VAUGHANY_PCE_REL_VER  = '0.4';
+const VAUGHANY_PCE_REL_DATE = '2026-10-11';
 
 // Repository URL.
-define ( "PCE_REPO", 'https://github.com/vaughany/yourls-popular-clicks-extended' );
+const VAUGHANY_PCE_REPO = 'https://github.com/vaughany/yourls-popular-clicks-extended';
 
-// Get the GMT offset if it is set
-define( "PCE_OFFSET", defined( 'YOURLS_HOURS_OFFSET' ) ? YOURLS_HOURS_OFFSET * 60 * 60 : 0 );
+// Text domain for translatable strings.
+const VAUGHANY_PCE_DOMAIN = 'vaughany_pce';
 
-// Blacklist regex. Links matchiing this regex will NOT be included in any reports.
-define( "PCE_BLACKLIST", "" );
+// Settings, stored in the YOURLS options table.
+const VAUGHANY_PCE_OPTION   = 'vaughany_pce_settings';
+const VAUGHANY_PCE_DEFAULTS = [
+    'rows'          => 10,      // Rows per report, 1 to 100.
+    'show_on_admin' => false,   // Show recent clicks below the links table on the main admin page.
+];
+
+// This version relies on APIs from YOURLS 1.10.
+if ( version_compare( YOURLS_VERSION, '1.10', '<' ) ) {
+    yourls_add_notice( 'Popular Clicks Extended requires YOURLS 1.10 or later and has not been loaded.', 'error' );
+    return;
+}
 
 // Adding actions.
 yourls_add_action( 'plugins_loaded', 'vaughany_pce_init' );
-yourls_add_action( 'admin_page_after_table', 'vaughany_pce_recenthits' );
+yourls_add_action( 'load-vaughany_pce', 'vaughany_pce_handle_post' );
+yourls_add_action( 'html_head', 'vaughany_pce_html_head' );
+yourls_add_action( 'admin_page_after_table', 'vaughany_pce_admin_recent_clicks' );
 
 /**
  * Standard init function.
  */
-function vaughany_pce_init() {
-    yourls_register_plugin_page( 'vaughany_pce', 'Popular Clicks Extended', 'vaughany_pce_display_page' );
+function vaughany_pce_init(): void {
+    yourls_register_plugin_page( 'vaughany_pce', yourls__( 'Popular Clicks Extended', VAUGHANY_PCE_DOMAIN ), 'vaughany_pce_display_page' );
 }
 
 /**
- * vaughany_pce_show_last_period(): queries the database for the number of clicks per link since n seconds ago,
- *     e.g. 'time() - 300' to 'time()'
- *     e.g. '2017-07-15 14:52:27' to '2017-07-15 14:57:27'
+ * Get the settings, with defaults for anything missing or invalid.
+ */
+function vaughany_pce_get_settings(): array {
+    $settings = yourls_get_option( VAUGHANY_PCE_OPTION, [] );
+    if ( !is_array( $settings ) ) {
+        $settings = [];
+    }
+    $settings = array_merge( VAUGHANY_PCE_DEFAULTS, $settings );
+
+    return [
+        'rows'          => max( 1, min( 100, (int) $settings['rows'] ) ),
+        'show_on_admin' => (bool) $settings['show_on_admin'],
+    ];
+}
+
+/**
+ * Save the settings form, before any page output.
+ */
+function vaughany_pce_handle_post(): void {
+    if ( !isset( $_POST['vaughany_pce_save'] ) ) {
+        return;
+    }
+
+    // Dies with a 403 if the nonce is missing or invalid.
+    yourls_verify_nonce( 'vaughany_pce_settings' );
+
+    $rows = filter_var( $_POST['rows'] ?? '', FILTER_VALIDATE_INT, [ 'options' => [ 'min_range' => 1, 'max_range' => 100 ] ] );
+    if ( $rows === false ) {
+        yourls_add_notice( yourls__( 'Rows per report must be a whole number from 1 to 100.', VAUGHANY_PCE_DOMAIN ), 'error' );
+        return;
+    }
+
+    yourls_update_option( VAUGHANY_PCE_OPTION, [
+        'rows'          => $rows,
+        'show_on_admin' => !empty( $_POST['show_on_admin'] ),
+    ] );
+
+    yourls_add_notice( yourls__( 'Settings saved.', VAUGHANY_PCE_DOMAIN ), 'success' );
+}
+
+/**
+ * Load YOURLS's own tab styles and script (as used on the stats pages) on this plugin's page only.
  *
- * $period:     integer:    The number of seconds to look back.
- * $rows:       integer:    The number of rows to pull from the database (maximum), defaults to 10.
- * $desc:       string:     Describes the time period for the report.
+ * @param array|string $context YOURLS passes the context wrapped in an array.
  */
-function vaughany_pce_show_last_period( $period, $rows, $desc ) {
-    global $ydb;
-
-    // Check for an appropriate integer, set a default if not appropriate.
-    if ( !is_int( $rows ) || $rows == 0 || $rows == null ) {
-        $rows = 10;
+function vaughany_pce_html_head( $context ): void {
+    if ( is_array( $context ) ) {
+        $context = $context[0] ?? '';
+    }
+    if ( $context !== 'plugin_page_vaughany_pce' ) {
+        return;
     }
 
-    // Take the seconds off the current time, then change the timestamp into a date.
-    $since = date( 'Y-m-d H:i:s', ( time() - $period + PCE_OFFSET ) );
-
-//    $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title
-//        FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b
-//        WHERE a.shorturl = b.keyword
-//            AND click_time >= '" . $since . "'
-//        GROUP BY a.shorturl
-//        ORDER BY COUNT(*) DESC, shorturl ASC
-//        LIMIT " . $rows . ";";
-
-    $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title
-        FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b
-        WHERE a.shorturl = b.keyword
-            AND click_time >= :since
-        GROUP BY a.shorturl
-        ORDER BY COUNT(*) DESC, shorturl ASC
-        LIMIT :rows;";
-
-    $binds = ['since' => $since, 'rows' => $rows];
-
-    if ( PCE_DEBUG ) {
-        echo '<p style="color: #f00;">(' . $sql . ')</p>';
-    }
-
-    if ( $results = $ydb->fetchObjects( $sql, $binds ) ) {
-        $out = vaughany_pce_render_results( $results );
-    } else {
-        $out = '<p>No results for the chosen time period.</p>';
-    }
-
-    echo '<h3>Popular clicks for the last ' . $desc . ":</h3>";
-
-    if (PCE_DEBUG) {
-        echo '<p style="color: #f00;">(Period from ' . $since . ' to now.)</p>';
-    }
-
-    echo $out;
+    $version = '?v=' . rawurlencode( YOURLS_VERSION );
+    echo '<link rel="stylesheet" href="' . yourls_esc_url( yourls_site_url( false ) . '/css/infos.css' . $version ) . '" type="text/css" media="screen" />' . PHP_EOL;
+    echo '<script src="' . yourls_esc_url( yourls_site_url( false ) . '/js/infos.js' . $version ) . '" type="text/javascript"></script>' . PHP_EOL;
+    echo '<style>.vaughany-pce-table{margin-bottom:1.5em;border-collapse:collapse}.vaughany-pce-table th,.vaughany-pce-table td{padding:3px 8px;text-align:left;vertical-align:top}.vaughany-pce-table tbody tr:nth-child(odd){background:#E3F3FF}.vaughany-pce-table td.vaughany-pce-num{text-align:right}</style>' . PHP_EOL;
 }
 
+/**
+ * The difference in seconds between local (display) time and UTC, which is what YOURLS stores.
+ * Respects YOURLS_HOURS_OFFSET and the YOURLS Time Zones plugin.
+ */
+function vaughany_pce_offset( int $now ): int {
+    return (int) yourls_get_timestamp( $now ) - $now;
+}
 
 /**
- * vaughany_pce_show_specific_period(): queries the database for the number of clicks per link per whole period,
- *     e.g. 'today'
- *     e.g. '2017-07-15 00:00:00' to '2017-07-15 23:59:59'
+ * Whole calendar periods (this hour, yesterday, last month etc.) in local time.
  *
- * $period: string:     Date partial for a single day, format depends on $type.
- * $type:   string:     One of: hour, day, week, month, year; so $period can be processed correctly.
- * $rows:   integer:    The number of rows to pull from the database (maximum), defaults to 10.
- * $desc:   string:     Describes the time period for the report.
+ * @return array List of ['desc' => string, 'from' => DateTimeImmutable, 'to' => DateTimeImmutable], in local time; 'to' is exclusive.
  */
-function vaughany_pce_show_specific_period( $period, $type, $rows, $desc ) {
-    global $ydb;
+function vaughany_pce_calendar_periods( int $now, int $offset ): array {
+    $d     = VAUGHANY_PCE_DOMAIN;
+    $local = new DateTimeImmutable( '@' . ( $now + $offset ) );
 
-    // Check for an appropriate integer, set a default if not appropriate.
-    if ( !is_int($rows) || $rows == 0 || $rows == null ) {
-        $rows = 10;
-    }
+    $hour  = $local->setTime( (int) $local->format( 'G' ), 0 );
+    $day   = $local->setTime( 0, 0 );
+    $week  = $day->modify( 'monday this week' );
+    $month = $day->modify( 'first day of this month' );
+    $year  = $day->setDate( (int) $local->format( 'Y' ), 1, 1 );
 
-    // Test for each $type, create $from and $to date bounds accordingly.
-    if ( $type == 'hour' ) {
-        // Create the bounds for a single hour.
-        $from   = $period . ':00:00';
-        $to     = $period . ':59:59';
-    } else if ( $type == 'day' ) {
-        // Create the bounds for a single day.
-        $from   = $period . ' 00:00:00';
-        $to     = $period . ' 23:59:59';
-    } else if ( $type == 'week' ) {
-        // Create the bounds for a single week.
-        $from   = $period . ' 00:00:00';
-        $to     = date( 'Y-m-d', strtotime( $period . ' + 6 days', time() + PCE_OFFSET ) ) . ' 23:59:59';
-    } else if ( $type == 'month' ) {
-        // Create the bounds for a single month.
-        $from   = $period . '-01 00:00:00';
-        $to     = date( 'Y-m-d', strtotime( $period . '-' . date( 't', strtotime( $from, time() + PCE_OFFSET ) ), time() + PCE_OFFSET ) ) . ' 23:59:59';
-    } else if ( $type == 'year' ) {
-        // Create the bounds for a single year.
-        $from   = $period . '-01-01 00:00:00';
-        $to     = $period . '-12-31 23:59:59';
-    } else {
-        // If no type is specified, defaults to literally everything (up to 32bit Unix signed integer limit).
-        $from   = '1970-01-01 00:00:00';
-        $to     = date( 'Y-m-d H:i:s', 2147483647 );
-    }
+    $prev_hour  = $hour->modify( '-1 hour' );
+    $prev_day   = $day->modify( '-1 day' );
+    $prev_week  = $week->modify( '-7 days' );
+    $prev_month = $month->modify( '-1 month' );
+    $prev_year  = $year->modify( '-1 year' );
 
-    $sql = "SELECT a.shorturl AS shorturl, COUNT(*) AS clicks, b.url AS longurl, b.title as title
-        FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b
-        WHERE a.shorturl = b.keyword
-            AND click_time >= :from
-            AND click_time <= :to
-        GROUP BY a.shorturl
-        ORDER BY COUNT(*) DESC, shorturl ASC
-        LIMIT :rows;";
+    $date = fn( string $format, DateTimeImmutable $dt ): string => yourls_date_i18n( $format, $dt->getTimestamp() );
 
-    $binds = ['from' => $from, 'to' => $to, 'rows' => $rows];
-
-    if ( PCE_DEBUG ) {
-        echo '<p style="color: #f00;">(' . $sql . ")</p>";
-    }
-
-    if ( $results = $ydb->fetchObjects( $sql, $binds ) ) {
-        $out = vaughany_pce_render_results( $results );
-    } else {
-        $out = '<p>No results for the chosen time period.</p>';
-    }
-
-    echo '<h3>Popular clicks for ' . $desc . ":</h3>";
-
-    if ( PCE_DEBUG ) {
-        echo '<p style="color: #f00;">(Period from ' . $from . ' to ' . $to . ".)</p>";
-    }
-
-    echo $out;
+    return [
+        [ 'from' => $hour,       'to' => $hour->modify( '+1 hour' ),  'desc' => sprintf( yourls__( 'this hour (%1$s to %2$s) (so far)', $d ), $date( 'jS F Y, ga', $hour ), $date( 'ga', $hour->modify( '+1 hour' ) ) ) ],
+        [ 'from' => $prev_hour,  'to' => $hour,                       'desc' => sprintf( yourls__( 'the previous hour (%1$s to %2$s)', $d ), $date( 'jS F Y, ga', $prev_hour ), $date( 'ga', $hour ) ) ],
+        [ 'from' => $day,        'to' => $day->modify( '+1 day' ),    'desc' => sprintf( yourls__( 'today (%s) (so far)', $d ), $date( 'jS F Y', $day ) ) ],
+        [ 'from' => $prev_day,   'to' => $day,                        'desc' => sprintf( yourls__( 'yesterday (%s)', $d ), $date( 'jS F Y', $prev_day ) ) ],
+        [ 'from' => $week,       'to' => $week->modify( '+7 days' ),  'desc' => sprintf( yourls__( 'this week (beginning %s) (so far)', $d ), $date( 'jS F Y', $week ) ) ],
+        [ 'from' => $prev_week,  'to' => $week,                       'desc' => sprintf( yourls__( 'last week (beginning %s)', $d ), $date( 'jS F Y', $prev_week ) ) ],
+        [ 'from' => $month,      'to' => $month->modify( '+1 month' ), 'desc' => sprintf( yourls__( 'this month (%s) (so far)', $d ), $date( 'F Y', $month ) ) ],
+        [ 'from' => $prev_month, 'to' => $month,                      'desc' => sprintf( yourls__( 'last month (%s)', $d ), $date( 'F Y', $prev_month ) ) ],
+        [ 'from' => $year,       'to' => $year->modify( '+1 year' ),  'desc' => sprintf( yourls__( 'this year (%s) (so far)', $d ), $date( 'Y', $year ) ) ],
+        [ 'from' => $prev_year,  'to' => $year,                       'desc' => sprintf( yourls__( 'last year (%s)', $d ), $date( 'Y', $prev_year ) ) ],
+    ];
 }
 
 /**
- * Often-used function to parse and format the results.
+ * Rolling periods: from n seconds ago until now. Note that 24 hours here is not the same as 'yesterday', above.
+ *
+ * @return array List of ['desc' => string, 'seconds' => int|null], where null means all time.
  */
-function vaughany_pce_render_results( $results ) {
-//    $total = 0;
-//    $out = '<ol>';
-//    foreach ( $results as $result ) {
-//        $total += $result->clicks;
-//        $out .= '<li>';
-//        $out .= $result->clicks . PCE_SEP;
-//        $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a>' . PCE_SEP;
-//        $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->title . '</a>';
-//        $out .= '</li>';
-//    }
-//    $out .= "</ol>" . PHP_EOL;
-//    $out .= '<p>' . $total . " total clicks this period.</p>" . PHP_EOL;
+function vaughany_pce_rolling_periods(): array {
+    $d      = VAUGHANY_PCE_DOMAIN;
+    $minute = 60;
+    $hour   = 60 * $minute;
+    $day    = 24 * $hour;
+
+    return [
+        [ 'seconds' => 5 * $minute,   'desc' => yourls__( 'the last 5 minutes', $d ) ],
+        [ 'seconds' => 30 * $minute,  'desc' => yourls__( 'the last 30 minutes', $d ) ],
+        [ 'seconds' => $hour,         'desc' => yourls__( 'the last hour', $d ) ],
+        [ 'seconds' => 6 * $hour,     'desc' => yourls__( 'the last 6 hours', $d ) ],
+        [ 'seconds' => 12 * $hour,    'desc' => yourls__( 'the last 12 hours', $d ) ],
+        [ 'seconds' => 24 * $hour,    'desc' => yourls__( 'the last 24 hours', $d ) ],
+        [ 'seconds' => 2 * $day,      'desc' => yourls__( 'the last 2 days', $d ) ],
+        [ 'seconds' => 7 * $day,      'desc' => yourls__( 'the last week', $d ) ],
+        [ 'seconds' => 14 * $day,     'desc' => yourls__( 'the last 2 weeks', $d ) ],
+        [ 'seconds' => 30 * $day,     'desc' => yourls__( 'the last month', $d ) ],
+        [ 'seconds' => 60 * $day,     'desc' => yourls__( 'the last 2 months', $d ) ],
+        [ 'seconds' => 90 * $day,     'desc' => yourls__( 'the last 3 months', $d ) ],
+        [ 'seconds' => 180 * $day,    'desc' => yourls__( 'the last 6 months', $d ) ],
+        [ 'seconds' => 365 * $day,    'desc' => yourls__( 'the last year', $d ) ],
+        [ 'seconds' => 2 * 365 * $day, 'desc' => yourls__( 'the last 2 years', $d ) ],
+        [ 'seconds' => 3 * 365 * $day, 'desc' => yourls__( 'the last 3 years', $d ) ],
+        [ 'seconds' => 4 * 365 * $day, 'desc' => yourls__( 'the last 4 years', $d ) ],
+        // ...and the catch-all:
+        [ 'seconds' => null,          'desc' => yourls__( 'all time', $d ) ],
+    ];
+}
+
+/**
+ * Query the database for the number of clicks per link between two times.
+ *
+ * @param string|null $from Earliest click time (inclusive), as a UTC 'Y-m-d H:i:s' string, or null for no limit.
+ * @param string|null $to   Latest click time (exclusive), as a UTC 'Y-m-d H:i:s' string, or null for no limit.
+ * @param int         $rows The maximum number of rows to return.
+ * @return array List of objects with keyword, url, title and clicks properties.
+ */
+function vaughany_pce_get_popular( ?string $from, ?string $to, int $rows ): array {
+    $where = [];
+    $binds = [ 'rows' => $rows ];
+
+    if ( $from !== null ) {
+        $where[]       = 'l.click_time >= :from';
+        $binds['from'] = $from;
+    }
+    if ( $to !== null ) {
+        $where[]     = 'l.click_time < :to';
+        $binds['to'] = $to;
+    }
+
+    $sql = 'SELECT u.keyword AS keyword, u.url AS url, u.title AS title, COUNT(*) AS clicks
+        FROM `' . YOURLS_DB_TABLE_LOG . '` l
+        INNER JOIN `' . YOURLS_DB_TABLE_URL . '` u ON l.shorturl = u.keyword'
+        . ( $where ? ' WHERE ' . implode( ' AND ', $where ) : '' ) . '
+        GROUP BY u.keyword, u.url, u.title
+        ORDER BY clicks DESC, u.keyword ASC
+        LIMIT :rows';
+
+    return yourls_get_db( 'read-vaughany_pce_popular' )->fetchObjects( $sql, $binds ) ?: [];
+}
+
+/**
+ * Format a Unix timestamp (local time) as a UTC string for querying the database.
+ */
+function vaughany_pce_to_db_time( int $local_timestamp, int $offset ): string {
+    return gmdate( 'Y-m-d H:i:s', $local_timestamp - $offset );
+}
+
+/**
+ * Render a list of popular clicks as a table.
+ */
+function vaughany_pce_render_table( array $results ): string {
+    $d = VAUGHANY_PCE_DOMAIN;
+
+    if ( !$results ) {
+        return '<p>' . yourls_esc_html__( 'No results for the chosen time period.', $d ) . '</p>' . PHP_EOL;
+    }
 
     $total = 0;
-    $out = '<table>';
-    $out .= '<tr><th>Hits</th><th>Short URL</th><th>Website</th></tr>';
+    $out   = '<table class="vaughany-pce-table">' . PHP_EOL;
+    $out  .= '<thead><tr><th>' . yourls_esc_html__( 'Clicks', $d ) . '</th><th>' . yourls_esc_html__( 'Short URL', $d ) . '</th><th>' . yourls_esc_html__( 'Website', $d ) . '</th></tr></thead>' . PHP_EOL;
+    $out  .= '<tbody>' . PHP_EOL;
     foreach ( $results as $result ) {
-        $total += $result->clicks;
-        $out .= '<tr>';
-        $out .= '<td>' . $result->clicks . '</td>';
-        $out .= '<td><a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a></td>';
-        $out .= '<td><a href="' . $result->longurl . '" target="blank">' . $result->title . '</a></td>';
+        $total += (int) $result->clicks;
+        $out   .= '<tr>';
+        $out   .= '<td class="vaughany-pce-num">' . (int) $result->clicks . '</td>';
+        $out   .= '<td>' . vaughany_pce_short_link( $result->keyword ) . '</td>';
+        $out   .= '<td>' . vaughany_pce_long_link( $result->url, $result->title ) . '</td>';
+        $out   .= '</tr>' . PHP_EOL;
     }
-    $out .= '</table>';
-
-
-
-// yourls_table_head();
-// yourls_table_tbody_start();
-// yourls_table_add_row();
-// yourls_table_tbody_end();
-// yourls_table_end();
-
-
+    $out .= '</tbody>' . PHP_EOL;
+    $out .= '<tfoot><tr><td class="vaughany-pce-num"><strong>' . $total . '</strong></td><td colspan="2"><strong>' . yourls_esc_html__( 'Total clicks for the links shown', $d ) . '</strong></td></tr></tfoot>' . PHP_EOL;
+    $out .= '</table>' . PHP_EOL;
 
     return $out;
 }
 
 /**
- * vaughany_show_log() shows the n most recent lines from the log table.
- *
- * $rows:   integer:    The number of rows to pull from the database (maximum), defaults to 10.
+ * Link to a short URL's stats page.
  */
-function vaughany_show_log( $rows = 10) {
-
-    global $ydb;
-
-    // Check for an appropriate integer, set a default if not appropriate.
-    if ( !is_int($rows) || $rows == 0 || $rows == null || $rows == '' ) {
-        $rows = 10;
-    }
-
-    $sql = "SELECT click_time, ip_address, country_code, referrer, a.shorturl AS shorturl, b.url AS longurl, b.title as title
-        FROM " . YOURLS_DB_TABLE_LOG . " a, " . YOURLS_DB_TABLE_URL . " b
-        WHERE a.shorturl = b.keyword
-        ORDER BY click_time DESC
-        LIMIT :rows;";
-
-    $binds = ['rows' => $rows];
-
-    if ( PCE_DEBUG ) {
-        echo '<p style="color: #f00;">(' . $sql . ")</p>" . PHP_EOL;
-    }
-
-    if ( $results = $ydb->fetchObjects( $sql, $binds ) ) {
-        $out = '<ol>';
-        foreach ( $results as $result ) {
-            $out .= '<li>';
-            $out .= $result->click_time . PCE_SEP;
-            $out .= '<a href="' . YOURLS_SITE . '/' . $result->shorturl . '+" target="blank">' . $result->shorturl . '</a> / ';
-            $out .= '<a href="' . $result->longurl . '" target="blank">' . $result->title . '</a>' . PCE_SEP;
-            $out .= $result->ip_address . PCE_SEP;
-            $out .= $result->country_code . PCE_SEP;
-            $out .= $result->referrer;
-            $out .= '</li>';
-        }
-        $out .= "</ol>" . PHP_EOL;
-    } else {
-        $out = '<p>No logs to display.</p>' . PHP_EOL;
-    }
-
-    echo $out;
+function vaughany_pce_short_link( string $keyword ): string {
+    return '<a href="' . yourls_esc_url( yourls_statlink( $keyword ) ) . '">' . yourls_esc_html( $keyword ) . '</a>';
 }
 
-function vaughany_pce_recenthits() {
-    echo vaughany_show_log();
-    //echo "<h1>This is a big pile of poop!!</h1>";
+/**
+ * Link to a long URL, showing its title if there is one.
+ */
+function vaughany_pce_long_link( string $url, ?string $title ): string {
+    $text = ( $title !== null && $title !== '' ) ? $title : $url;
+    return '<a href="' . yourls_esc_url( $url ) . '" target="_blank" rel="noopener noreferrer" title="' . yourls_esc_attr( $url ) . '">' . yourls_esc_html( $text ) . '</a>';
 }
 
-function vaughany_pce_display_page() {
+/**
+ * Render the n most recent clicks from the log table.
+ *
+ * @param int $rows The maximum number of rows to show.
+ */
+function vaughany_pce_render_log( int $rows ): string {
+    $d = VAUGHANY_PCE_DOMAIN;
 
-    yourls_e( '<h2>Popular Clicks Extended</h2>' );
-    yourls_e( '<p>This report shows the most popular clicks for the selected time periods as of ' . date( 'jS F Y, g:ia', time() ) . '.</p>' );
-    yourls_e( '<p>Legend: <em>Position. Clicks' . PCE_SEP . 'Short URL' . PCE_SEP . 'Page</em></p>' );
-    echo "<hr>" ;
-?>
+    $sql = 'SELECT l.click_time AS click_time, l.ip_address AS ip_address, l.country_code AS country_code, l.referrer AS referrer,
+            u.keyword AS keyword, u.url AS url, u.title AS title
+        FROM `' . YOURLS_DB_TABLE_LOG . '` l
+        INNER JOIN `' . YOURLS_DB_TABLE_URL . '` u ON l.shorturl = u.keyword
+        ORDER BY l.click_time DESC, l.click_id DESC
+        LIMIT :rows';
 
+    $results = yourls_get_db( 'read-vaughany_pce_log' )->fetchObjects( $sql, [ 'rows' => $rows ] ) ?: [];
 
-
-
-
-
-
-
-
-
-<link rel="stylesheet" href="http://10.10.10.11/css/infos.css?v=1.7.3" type="text/css" media="screen" />
-<script src="http://10.10.10.11/js/infos.js?v=1.7.3" type="text/javascript"></script>
-
-
-<div id="tabs">
-
-    <div class="wrap_unfloat">
-        <ul id="headers" class="toggle_display stat_tab">
-            <li class="selected"><a href="#stat_tab_stats"><h2>'Period'</h2></a></li>
-            <li><a href="#stat_tab_location"><h2>Last 'Period'</h2></a></li>
-            <li><a href="#stat_tab_sources"><h2>Something Else</h2></a></li>
-            <li><a href="#stat_tab_share"><h2>Settings</h2></a></li>
-        </ul>
-    </div>
-
-    <div id="stat_tab_stats" class="tab">
-        <p>Content coming soon.</p>
-	<?php echo vaughany_pce_this_period() ?>
-    </div>
-
-    <div id="stat_tab_location" class="tab">
-        <p>Content coming soon.</p>
-	<?php echo vaughany_pce_last_period() ?>
-    </div>
-
-    <div id="stat_tab_sources" class="tab">
-        <p>Content coming soon.</p>
-	<?php echo vaughany_pce_something() ?>
-    </div>
-
-    <div id="stat_tab_share" class="tab">
-	<p>Probably a form or something.</p>
-    </div>
-
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-<?php
-    echo "<hr>" ;
-    yourls_e( '<h2>Popular clicks for &quot;<em>period</em>&quot;</h2>' );
-
-    /**
-     * vaughany_pce_show_specific_period() shows a specific hour, day, week, month or year. You can add more if you know what you're doing.
-     * TODO: Can we clean this up a bit, maybe a little refactoring?
-     */
-    // Specific hours.
-    vaughany_pce_show_specific_period( date( 'Y-m-d H', time() + PCE_OFFSET ), 'hour', null, 'this hour (' . date( 'jS F Y, ga', time() + PCE_OFFSET ) . ' to ' . date( 'ga', strtotime( '+ 1 hour', time() + PCE_OFFSET ) ) . ') (so far)' );
-    vaughany_pce_show_specific_period( date( 'Y-m-d H', strtotime( '- 1 hour', time() + PCE_OFFSET ) ), 'hour', null, 'the previous hour (' . date( 'jS F Y, ga', strtotime( '- 1 hour', time() + PCE_OFFSET ) ) . ' to ' . date( 'ga', time() + PCE_OFFSET ) . ')' );
-    // Specific days.
-    vaughany_pce_show_specific_period( date( 'Y-m-d', time() + PCE_OFFSET ), 'day', null, 'today (' . date( 'jS F Y', time() + PCE_OFFSET ) . ') (so far)' );
-    vaughany_pce_show_specific_period( date( 'Y-m-d', strtotime( '- 1 day', time() + PCE_OFFSET ) ), 'day', null, 'yesterday (' . date( 'jS F Y', strtotime( '- 1 day', time() + PCE_OFFSET ) ) . ')' );
-    // Specific weeks:
-    vaughany_pce_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week', time() + PCE_OFFSET ) ), 'week', null, 'this week (beginning ' . date( 'jS F Y', strtotime( 'monday this week', time() + PCE_OFFSET ) ) . ') (so far)' );
-    vaughany_pce_show_specific_period( date( 'Y-m-d', strtotime( 'monday this week - 7 days', time() + PCE_OFFSET ) ), 'week', null, 'last week  (beginning ' . date( 'jS F Y', strtotime( 'monday this week - 7 days', time() + PCE_OFFSET ) ) . ')' );
-    // Specific months:
-    vaughany_pce_show_specific_period( date( 'Y-m', time() + PCE_OFFSET ), 'month', null, 'this month (' . date( 'F Y', time() + PCE_OFFSET ) . ') (so far)' );
-    vaughany_pce_show_specific_period( date( 'Y-m', strtotime( '- 1 month', time() + PCE_OFFSET ) ), 'month', null, 'last month (' . date( 'F Y', strtotime( '- 1 month', time() + PCE_OFFSET ) ) . ')' );
-    // Specific years:
-    vaughany_pce_show_specific_period( date( 'Y', time() + PCE_OFFSET ), 'year', null, 'this year (' . date( 'Y', time() + PCE_OFFSET ) . ') (so far)');
-    vaughany_pce_show_specific_period( date( 'Y', strtotime( '- 1 year', time() + PCE_OFFSET ) ), 'year', null, 'last year (' . date('Y', strtotime( '- 1 year', time() + PCE_OFFSET ) ) . ')' );
-
-    echo "<hr>";
-    yourls_e( '<h2>Popular clicks for the last &quot;<em>period</em>&quot;</h2>' );
-
-    /**
-     * vaughany_pce_show_last_period() shows all clicks from n seconds ago until now. Note that 24 hours here is not the same as 'yesterday', above.
-     */
-    vaughany_pce_show_last_period( 60 * 5,                  null, '5 minutes');
-    vaughany_pce_show_last_period( 60 * 30,                 null, '30 minutes');
-    vaughany_pce_show_last_period( 60 * 60,                 null, 'hour');
-    vaughany_pce_show_last_period( 60 * 60 * 6,             null, '6 hours');
-    vaughany_pce_show_last_period( 60 * 60 * 12,            null, '12 hours');
-    vaughany_pce_show_last_period( 60 * 60 * 24,            null, '24 hours');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 2,        null, '2 days');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 7,        null, 'week');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 14,       null, '2 weeks');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 30,       null, 'month');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 60,       null, '2 months');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 90,       null, '3 months');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 180,      null, '6 months');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 365,      null, 'year');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 365 * 2,  null, '2 years');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 365 * 3,  null, '3 years');
-    vaughany_pce_show_last_period( 60 * 60 * 24 * 365 * 4,  null, '4 years');
-    // ...and the catch-all:
-    vaughany_pce_show_last_period( time(),                  null, 'billion years');
-
-    echo "<hr>";
-    yourls_e( '<h2>Recently used short links</h2>' );
-
-    vaughany_show_log();
-
-    echo "<hr>";
-
-    if ( PCE_DEBUG ) {
-        echo '<p style="color: #f00;">';
-        echo 'Last monday: ' . date( 'Y-m-d', strtotime( 'last monday', time() + PCE_OFFSET ) ) . "<br>" . PHP_EOL;
-        echo 'Monday before: ' . date( 'Y-m-d', strtotime( 'last monday - 7 days', time() + PCE_OFFSET ) ) . "<br>" . PHP_EOL;
-        echo 'Last month: ' . date( 'Y-m', strtotime( '- 1 month', time() + PCE_OFFSET ) ) . "<br>" . PHP_EOL;
-        echo '32-bit max Unix int: ' . date( 'Y-m-d H:i:s', 2147483647) . PHP_EOL;
-        echo '</p>';
+    if ( !$results ) {
+        return '<p>' . yourls_esc_html__( 'No logs to display.', $d ) . '</p>' . PHP_EOL;
     }
+
+    $out  = '<table class="vaughany-pce-table">' . PHP_EOL;
+    $out .= '<thead><tr><th>' . yourls_esc_html__( 'Time', $d ) . '</th><th>' . yourls_esc_html__( 'Short URL', $d ) . '</th><th>' . yourls_esc_html__( 'Website', $d )
+        . '</th><th>' . yourls_esc_html__( 'IP address', $d ) . '</th><th>' . yourls_esc_html__( 'Country', $d ) . '</th><th>' . yourls_esc_html__( 'Referrer', $d ) . '</th></tr></thead>' . PHP_EOL;
+    $out .= '<tbody>' . PHP_EOL;
+    foreach ( $results as $result ) {
+        // Click times are stored in UTC.
+        $time = yourls_date_i18n( 'Y-m-d H:i:s', yourls_get_timestamp( (int) strtotime( $result->click_time . ' UTC' ) ) );
+
+        $out .= '<tr>';
+        $out .= '<td>' . yourls_esc_html( $time ) . '</td>';
+        $out .= '<td>' . vaughany_pce_short_link( $result->keyword ) . '</td>';
+        $out .= '<td>' . vaughany_pce_long_link( $result->url, $result->title ) . '</td>';
+        $out .= '<td>' . yourls_esc_html( (string) $result->ip_address ) . '</td>';
+        $out .= '<td>' . yourls_esc_html( (string) $result->country_code ) . '</td>';
+        $out .= '<td>' . yourls_esc_html( (string) $result->referrer ) . '</td>';
+        $out .= '</tr>' . PHP_EOL;
+    }
+    $out .= '</tbody>' . PHP_EOL;
+    $out .= '</table>' . PHP_EOL;
+
+    return $out;
+}
+
+/**
+ * Show recent clicks below the links table on the main admin page, if enabled in the settings.
+ */
+function vaughany_pce_admin_recent_clicks(): void {
+    $settings = vaughany_pce_get_settings();
+    if ( !$settings['show_on_admin'] ) {
+        return;
+    }
+
+    echo '<h3>' . yourls_esc_html__( 'Recent clicks', VAUGHANY_PCE_DOMAIN ) . '</h3>' . PHP_EOL;
+    echo vaughany_pce_render_log( $settings['rows'] );
+}
+
+/**
+ * Render the settings form.
+ */
+function vaughany_pce_render_settings( array $settings ): string {
+    $d      = VAUGHANY_PCE_DOMAIN;
+    $action = yourls_admin_url( 'plugins.php?page=vaughany_pce' ) . '#stat_tab_settings';
+
+    $out  = '<form action="' . yourls_esc_url( $action ) . '" method="post">' . PHP_EOL;
+    $out .= yourls_nonce_field( 'vaughany_pce_settings', 'nonce', false, false ) . PHP_EOL;
+    $out .= '<p><label for="vaughany_pce_rows">' . yourls_esc_html__( 'Rows per report:', $d ) . '</label> ';
+    $out .= '<input type="number" id="vaughany_pce_rows" name="rows" min="1" max="100" value="' . (int) $settings['rows'] . '" class="text"></p>' . PHP_EOL;
+    $out .= '<p><label><input type="checkbox" name="show_on_admin" value="1"' . ( $settings['show_on_admin'] ? ' checked' : '' ) . '> ';
+    $out .= yourls_esc_html__( 'Show recent clicks (including visitor IP addresses) below the links table on the main admin page.', $d ) . '</label></p>' . PHP_EOL;
+    $out .= '<p><input type="submit" name="vaughany_pce_save" value="' . yourls_esc_attr__( 'Save settings', $d ) . '" class="button primary"></p>' . PHP_EOL;
+    $out .= '</form>' . PHP_EOL;
+
+    return $out;
+}
+
+/**
+ * The plugin's admin page.
+ */
+function vaughany_pce_display_page(): void {
+    $d        = VAUGHANY_PCE_DOMAIN;
+    $settings = vaughany_pce_get_settings();
+
+    // Use the same time throughout, so the whole report is consistent.
+    $now    = time();
+    $offset = vaughany_pce_offset( $now );
+
+    echo '<h2>' . yourls_esc_html__( 'Popular Clicks Extended', $d ) . '</h2>' . PHP_EOL;
+    echo '<p>' . yourls_esc_html( sprintf( yourls__( 'This report shows the most popular clicks for the selected time periods as of %s.', $d ), yourls_date_i18n( 'jS F Y, g:ia', $now + $offset ) ) ) . '</p>' . PHP_EOL;
+
+    $tabs = [
+        'stat_tab_calendar' => yourls__( 'Calendar periods', $d ),
+        'stat_tab_rolling'  => yourls__( 'Rolling periods', $d ),
+        'stat_tab_recent'   => yourls__( 'Recent clicks', $d ),
+        'stat_tab_settings' => yourls__( 'Settings', $d ),
+    ];
+
+    // Markup expected by YOURLS's js/infos.js.
+    echo '<div id="tabs">' . PHP_EOL;
+    echo '<div class="wrap_unfloat">' . PHP_EOL;
+    echo '<ul id="headers" class="toggle_display stat_tab">' . PHP_EOL;
+    foreach ( $tabs as $id => $label ) {
+        echo '<li><a href="#' . $id . '"><h2>' . yourls_esc_html( $label ) . '</h2></a></li>' . PHP_EOL;
+    }
+    echo '</ul>' . PHP_EOL;
+    echo '</div>' . PHP_EOL;
+
+    // Whole hours, days, weeks, months and years.
+    echo '<div id="stat_tab_calendar" class="tab">' . PHP_EOL;
+    echo '<h2>' . yourls_esc_html( $tabs['stat_tab_calendar'] ) . '</h2>' . PHP_EOL;
+    foreach ( vaughany_pce_calendar_periods( $now, $offset ) as $period ) {
+        $results = vaughany_pce_get_popular(
+            vaughany_pce_to_db_time( $period['from']->getTimestamp(), $offset ),
+            vaughany_pce_to_db_time( $period['to']->getTimestamp(), $offset ),
+            $settings['rows']
+        );
+        echo '<h3>' . yourls_esc_html( sprintf( yourls__( 'Popular clicks for %s:', $d ), $period['desc'] ) ) . '</h3>' . PHP_EOL;
+        echo vaughany_pce_render_table( $results );
+    }
+    echo '</div>' . PHP_EOL;
+
+    // From n seconds ago until now.
+    echo '<div id="stat_tab_rolling" class="tab">' . PHP_EOL;
+    echo '<h2>' . yourls_esc_html( $tabs['stat_tab_rolling'] ) . '</h2>' . PHP_EOL;
+    foreach ( vaughany_pce_rolling_periods() as $period ) {
+        $from    = $period['seconds'] === null ? null : gmdate( 'Y-m-d H:i:s', $now - $period['seconds'] );
+        $results = vaughany_pce_get_popular( $from, null, $settings['rows'] );
+        echo '<h3>' . yourls_esc_html( sprintf( yourls__( 'Popular clicks for %s:', $d ), $period['desc'] ) ) . '</h3>' . PHP_EOL;
+        echo vaughany_pce_render_table( $results );
+    }
+    echo '</div>' . PHP_EOL;
+
+    echo '<div id="stat_tab_recent" class="tab">' . PHP_EOL;
+    echo '<h2>' . yourls_esc_html( $tabs['stat_tab_recent'] ) . '</h2>' . PHP_EOL;
+    echo '<h3>' . yourls_esc_html__( 'Recently used short links', $d ) . '</h3>' . PHP_EOL;
+    echo vaughany_pce_render_log( $settings['rows'] );
+    echo '</div>' . PHP_EOL;
+
+    echo '<div id="stat_tab_settings" class="tab">' . PHP_EOL;
+    echo '<h2>' . yourls_esc_html( $tabs['stat_tab_settings'] ) . '</h2>' . PHP_EOL;
+    echo '<h3>' . yourls_esc_html__( 'Settings', $d ) . '</h3>' . PHP_EOL;
+    echo vaughany_pce_render_settings( $settings );
+    echo '</div>' . PHP_EOL;
+
+    echo '</div>' . PHP_EOL;
 
     // Nice footer.
-    echo '<p>This plugin by <a href="https://github.com/vaughany/">Paul Vaughan</a>, version ' . PCE_REL_VER . ' (' . PCE_REL_DATE .
-        '), heavily inspired by <a href="https://github.com/miconda/yourls">Popular Clicks</a>, is <a href="' . PCE_REPO .
-        '">available on GitHub</a> (<a href="' . PCE_REPO . '/issues">file a bug here</a>).</p>' . PHP_EOL;
-
+    echo '<hr>' . PHP_EOL;
+    echo '<p>This plugin by <a href="https://github.com/vaughany/">Paul Vaughan</a>, version ' . yourls_esc_html( VAUGHANY_PCE_REL_VER ) . ' (' . yourls_esc_html( VAUGHANY_PCE_REL_DATE )
+        . '), heavily inspired by <a href="https://github.com/miconda/yourls">Popular Clicks</a>, is <a href="' . yourls_esc_url( VAUGHANY_PCE_REPO )
+        . '">available on GitHub</a> (<a href="' . yourls_esc_url( VAUGHANY_PCE_REPO . '/issues' ) . '">file a bug here</a>).</p>' . PHP_EOL;
 }
